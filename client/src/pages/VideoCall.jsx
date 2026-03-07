@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/authStore';
 import { io } from 'socket.io-client';
@@ -10,6 +10,8 @@ const ICE_SERVERS = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
   ],
 };
 
@@ -25,6 +27,7 @@ const VideoCall = () => {
   const [callDuration, setCallDuration] = useState(0);
   const [error, setError] = useState('');
   const [remoteConnected, setRemoteConnected] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -33,7 +36,7 @@ const VideoCall = () => {
   const peerConnectionRef = useRef(null);
   const socketRef = useRef(null);
   const timerRef = useRef(null);
-  const isCallerRef = useRef(false);
+  const pendingCandidatesRef = useRef([]);   // ← Queue for early ICE candidates
 
   const formatDuration = (seconds) => {
     const hrs = Math.floor(seconds / 3600);
@@ -43,11 +46,22 @@ const VideoCall = () => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // ── Create the RTCPeerConnection ──
-  const createPeerConnection = () => {
+  // ── Flush any queued ICE candidates ──
+  const flushCandidates = useCallback(async (pc) => {
+    for (const candidate of pendingCandidatesRef.current) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.warn('Failed to add queued ICE candidate:', e);
+      }
+    }
+    pendingCandidatesRef.current = [];
+  }, []);
+
+  // ── Create RTCPeerConnection ──
+  const createPeerConnection = useCallback(() => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Send ICE candidates to the other peer
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
         socketRef.current.emit('ice_candidate', {
@@ -57,8 +71,8 @@ const VideoCall = () => {
       }
     };
 
-    // When we receive the remote stream
     pc.ontrack = (event) => {
+      console.log('📹 Remote track received!', event.streams[0]);
       if (remoteVideoRef.current && event.streams[0]) {
         remoteVideoRef.current.srcObject = event.streams[0];
         setRemoteConnected(true);
@@ -66,6 +80,10 @@ const VideoCall = () => {
     };
 
     pc.oniceconnectionstatechange = () => {
+      console.log('ICE state:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        setRemoteConnected(true);
+      }
       if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
         setRemoteConnected(false);
       }
@@ -73,18 +91,21 @@ const VideoCall = () => {
 
     peerConnectionRef.current = pc;
     return pc;
-  };
+  }, [caseId]);
 
-  // ── Initialize media + socket + join video room ──
+  // ── Initialize everything ──
   const initializeMedia = async () => {
     try {
       setCallState('connecting');
+      setError('');
 
-      // 1. Get camera/mic
+      // 1. Get camera/mic FIRST
+      console.log('📷 Requesting camera...');
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720, facingMode: 'user' },
-        audio: { echoCancellation: true, noiseSuppression: true },
+        video: true,
+        audio: true,
       });
+      console.log('📷 Camera OK! Tracks:', stream.getTracks().map(t => t.kind));
 
       localStreamRef.current = stream;
       if (localVideoRef.current) {
@@ -92,23 +113,35 @@ const VideoCall = () => {
       }
 
       // 2. Connect socket
-      const socket = io(API_URL, { transports: ['websocket'] });
+      console.log('🔌 Connecting socket to:', API_URL);
+      const socket = io(API_URL, {
+        transports: ['websocket', 'polling'],   // ← fallback to polling if WS fails
+        reconnectionAttempts: 5,
+        timeout: 10000,
+      });
       socketRef.current = socket;
 
-      // 3. Create peer connection & add local tracks
+      // 3. Create peer connection & add tracks
       const pc = createPeerConnection();
       stream.getTracks().forEach((track) => {
         pc.addTrack(track, stream);
       });
 
-      // 4. Set up socket listeners for signaling
+      // 4. Socket events
       socket.on('connect', () => {
+        console.log('🔌 Socket connected! ID:', socket.id);
+        setSocketConnected(true);
         socket.emit('join_video', caseId);
       });
 
-      // When the OTHER user joins — we are the caller, create offer
+      socket.on('connect_error', (err) => {
+        console.error('🔌 Socket connection error:', err.message);
+        setError(`Cannot connect to server: ${err.message}. Check if the backend is running.`);
+      });
+
+      // Other user joined → we create offer
       socket.on('user_joined_video', async () => {
-        isCallerRef.current = true;
+        console.log('👤 Other user joined! Creating offer...');
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -118,10 +151,12 @@ const VideoCall = () => {
         }
       });
 
-      // When we receive an offer — we are the callee, create answer
+      // We receive an offer → create answer
       socket.on('video_offer', async ({ offer }) => {
+        console.log('📨 Received offer, creating answer...');
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          await flushCandidates(pc);    // ← flush queued candidates
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           socket.emit('video_answer', { caseId, answer });
@@ -130,28 +165,34 @@ const VideoCall = () => {
         }
       });
 
-      // When we receive an answer
+      // We receive an answer
       socket.on('video_answer', async ({ answer }) => {
+        console.log('📨 Received answer');
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          await flushCandidates(pc);    // ← flush queued candidates
         } catch (err) {
           console.error('Error handling answer:', err);
         }
       });
 
-      // When we receive ICE candidates
+      // ICE candidates — queue if remoteDescription not set yet
       socket.on('ice_candidate', async ({ candidate }) => {
         try {
           if (pc.remoteDescription) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } else {
+            console.log('⏳ Queuing ICE candidate (no remote desc yet)');
+            pendingCandidatesRef.current.push(candidate);   // ← QUEUE instead of drop
           }
         } catch (err) {
           console.error('Error adding ICE candidate:', err);
         }
       });
 
-      // When other user leaves
+      // Other user left
       socket.on('user_left_video', () => {
+        console.log('👤 Other user left');
         setRemoteConnected(false);
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = null;
@@ -164,14 +205,17 @@ const VideoCall = () => {
       timerRef.current = setInterval(() => {
         setCallDuration((prev) => prev + 1);
       }, 1000);
+
     } catch (err) {
-      console.error('Media error:', err);
+      console.error('❌ Media error:', err);
       if (err.name === 'NotAllowedError') {
-        setError('Camera and microphone access denied. Please allow permissions in your browser settings.');
+        setError('Camera/mic access denied. Click the 🔒 icon in your browser address bar → allow Camera & Microphone → then retry.');
       } else if (err.name === 'NotFoundError') {
         setError('No camera or microphone found. Please connect a device and try again.');
+      } else if (err.name === 'NotReadableError') {
+        setError('Camera is being used by another app. Close other apps using your camera and retry.');
       } else {
-        setError('Failed to access camera/microphone. Please check your device settings.');
+        setError(`Failed to start: ${err.message}`);
       }
       setCallState('idle');
     }
@@ -201,7 +245,6 @@ const VideoCall = () => {
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = null;
       }
-      // Replace the video track back to camera
       const camTrack = localStreamRef.current?.getVideoTracks()[0];
       if (camTrack && peerConnectionRef.current) {
         const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === 'video');
@@ -219,7 +262,6 @@ const VideoCall = () => {
         });
         screenStreamRef.current = screenStream;
 
-        // Replace the video track with screen share in the peer connection
         const screenTrack = screenStream.getVideoTracks()[0];
         if (peerConnectionRef.current) {
           const sender = peerConnectionRef.current.getSenders().find((s) => s.track?.kind === 'video');
@@ -293,6 +335,7 @@ const VideoCall = () => {
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full animate-pulse ${remoteConnected ? 'bg-[#2d8a5e]' : 'bg-[#C9A84C]'}`}></span>
             <span className="text-white/80 text-xs font-mono">{formatDuration(callDuration)}</span>
+            {socketConnected && <span className="text-[9px] text-green-400/60">● online</span>}
           </div>
         )}
 
@@ -352,16 +395,8 @@ const VideoCall = () => {
 
         {callState === 'connected' && (
           <>
-            {/* Remote Video (full screen) */}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover"
-              style={{ background: '#111' }}
-            />
+            <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" style={{ background: '#111' }} />
 
-            {/* Placeholder when no remote video yet */}
             {!remoteConnected && (
               <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#0D1B2A] to-[#0a0a0a]">
                 <div className="text-center">
@@ -378,15 +413,8 @@ const VideoCall = () => {
               </div>
             )}
 
-            {/* Local Video (Picture-in-Picture) */}
             <div className="absolute bottom-28 right-6 w-48 h-36 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl bg-black z-20 group">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
+              <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
               {isVideoOff && (
                 <div className="absolute inset-0 bg-[#0D1B2A] flex items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center">
@@ -424,41 +452,19 @@ const VideoCall = () => {
       {/* Bottom Controls */}
       {callState === 'connected' && (
         <div className="relative z-20 flex items-center justify-center gap-4 py-6 bg-gradient-to-t from-black/80 to-transparent">
-          <button
-            onClick={toggleMute}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-              isMuted ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
-            }`}
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
+          <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${isMuted ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'}`} title={isMuted ? 'Unmute' : 'Mute'}>
             <i className={`fas ${isMuted ? 'fa-microphone-slash' : 'fa-microphone'} text-sm`}></i>
           </button>
 
-          <button
-            onClick={toggleVideo}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-              isVideoOff ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
-            }`}
-            title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
-          >
+          <button onClick={toggleVideo} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${isVideoOff ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'}`} title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}>
             <i className={`fas ${isVideoOff ? 'fa-video-slash' : 'fa-video'} text-sm`}></i>
           </button>
 
-          <button
-            onClick={toggleScreenShare}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-              isScreenSharing ? 'bg-[#C9A84C] text-[#0D1B2A]' : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
-            }`}
-            title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
-          >
+          <button onClick={toggleScreenShare} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${isScreenSharing ? 'bg-[#C9A84C] text-[#0D1B2A]' : 'bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'}`} title={isScreenSharing ? 'Stop sharing' : 'Share screen'}>
             <i className="fas fa-display text-sm"></i>
           </button>
 
-          <button
-            onClick={endCall}
-            className="w-14 h-14 bg-[#c0392b] hover:bg-[#a93226] text-white rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-lg shadow-[#c0392b]/30"
-            title="End call"
-          >
+          <button onClick={endCall} className="w-14 h-14 bg-[#c0392b] hover:bg-[#a93226] text-white rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 shadow-lg shadow-[#c0392b]/30" title="End call">
             <i className="fas fa-phone-slash text-base"></i>
           </button>
         </div>
