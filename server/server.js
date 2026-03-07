@@ -36,9 +36,27 @@ initProviders();
 
 app.use(helmet());
 
+// ✅ Improved CORS for local + Vercel + configured CLIENT_URL
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  process.env.CLIENT_URL, // e.g. https://your-frontend.vercel.app
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g., Postman, curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // Allow exact origins
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+
+      // Allow all Vercel preview deployments
+      if (/^https:\/\/.*\.vercel\.app$/.test(origin)) return callback(null, true);
+
+      return callback(new Error(`CORS blocked for origin: ${origin}`), false);
+    },
     credentials: true,
   })
 );
@@ -49,6 +67,10 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
+
+// ---------------------
+// RATE LIMITERS
+// ---------------------
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -74,7 +96,31 @@ app.use('/api/ai', aiLimiter);
 // ROUTES
 // ---------------------
 
-// Health check
+// ✅ Root health check (Render friendliness)
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'JurisBridge API is running ✅',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+  });
+});
+
+// ✅ Basic health check (non /api)
+app.get('/health', (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
+// ✅ API base (so /api doesn’t show 404)
+app.get('/api', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'JurisBridge API base route ✅',
+  });
+});
+
+// ✅ API health check
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -115,20 +161,8 @@ app.use('/api/tts', require('./routes/ttsRoutes'));
 // ✅ Dashboard Stats Routes
 app.use('/api/stats', require('./routes/statsRoutes'));
 
-// Payment
+// ✅ Payments
 app.use('/api/payments', paymentRoutes);
-
-app.get('/', (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'JurisBridge API is running ✅',
-    uptime: process.uptime(),
-  });
-});
-
-app.get('/health', (req, res) => {
-  res.status(200).json({ ok: true });
-});
 
 // 404 handler
 app.use('*', (req, res) => {
