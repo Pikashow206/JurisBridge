@@ -30,6 +30,7 @@ connectDB();
 console.log('\n🤖 Initializing JurisPilot AI Providers...');
 initProviders();
 
+app.set('trust proxy', 1);
 // ---------------------
 // GLOBAL MIDDLEWARES
 // ---------------------
