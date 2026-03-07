@@ -55,10 +55,7 @@ const LawyerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
+    isVerified: true, 
     isAvailable: {
       type: Boolean,
       default: true,
