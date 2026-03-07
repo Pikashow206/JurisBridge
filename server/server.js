@@ -117,6 +117,19 @@ app.use('/api/stats', require('./routes/statsRoutes'));
 
 // Payment
 app.use('/api/payments', paymentRoutes);
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'JurisBridge API is running ✅',
+    uptime: process.uptime(),
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
