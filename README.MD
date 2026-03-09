@@ -10,9 +10,9 @@
   <img src="https://img.shields.io/badge/%20Live%20Demo-Visit%20JurisBridge-00d4ff?style=for-the-badge&labelColor=0D1B2A" alt="Live Demo" />
 </a>
 
-[![GitHub](https://img.shields.io/badge/GitHub-Tiwari1782-181717?style=for-the-badge&logo=github)](https://github.com/Tiwari1782)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/prakash-tiwari-8900bb2b2/)
-[![LeetCode](https://img.shields.io/badge/LeetCode-pRaKaSh1782-FFA116?style=for-the-badge&logo=leetcode)](https://leetcode.com/u/pRaKaSh1782/)
+[![GitHub](https://img.shields.io/badge/GitHub-Tiwari1782-181717?style=for-the-badge&logo=github)](https://github.com/Pikashow206)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/piyush-kumar-363b343a7/)
+[![LeetCode](https://img.shields.io/badge/LeetCode-Piyush_kumar0201-FFA116?style=for-the-badge&logo=leetcode)](https://leetcode.com/u/Piyush_kumar0201/)
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Database-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
@@ -689,9 +689,9 @@ This project is open source and available under the [MIT License](LICENSE).
 
 **Piyush kumar**
 
-[![Portfolio](https://img.shields.io/badge/Portfolio-Visit-00d4ff?style=for-the-badge&labelColor=0D1B2A)](https://github.com/Tiwari1782/PORTFOLIO)
-[![GitHub](https://img.shields.io/badge/GitHub-Tiwari1782-181717?style=for-the-badge&logo=github)](https://github.com/Tiwari1782)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/prakash-tiwari-8900bb2b2/)
+[![Portfolio](https://img.shields.io/badge/Portfolio-Visit-00d4ff?style=for-the-badge&labelColor=0D1B2A)](https://github.com/Pikashow206/PORTFOLIO)
+[![GitHub](https://img.shields.io/badge/GitHub-Pikashow206-181717?style=for-the-badge&logo=github)](https://github.com/https:/Pikashow206/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/piyush-kumar-363b343a7/)
 
 </div>
 
@@ -701,7 +701,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ### ⭐ Star this repository if you found it useful!
 
-**Built with ❤️ by [Prakash Tiwari, Piyush Kumar, Harnoor Kaur, Prince Sagwal](https://github.com/Tiwari1782)**
+**Built with ❤️ by [Prakash Tiwari, Piyush Kumar, Harnoor Kaur, Prince Sagwal](https://github.com/Pikashow206)**
 
 *Bridging the gap between citizens and justice through technology*
 
