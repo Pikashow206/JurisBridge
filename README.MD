@@ -687,7 +687,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Prakash Tiwari**
+**Piyush kumar**
 
 [![Portfolio](https://img.shields.io/badge/Portfolio-Visit-00d4ff?style=for-the-badge&labelColor=0D1B2A)](https://github.com/Tiwari1782/PORTFOLIO)
 [![GitHub](https://img.shields.io/badge/GitHub-Tiwari1782-181717?style=for-the-badge&logo=github)](https://github.com/Tiwari1782)
